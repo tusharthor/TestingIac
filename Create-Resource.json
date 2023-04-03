@@ -1,0 +1,1038 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Parameters": {
+    "Password": {
+      "NoEcho": "true",
+      "Type": "String",
+      "Description": "New account password",
+      "MinLength": "1",
+      "MaxLength": "41",
+      "ConstraintDescription": "the password must be between 1 and 41 characters"
+    },
+    "VpcId": {
+      "Description": "VPC associated with the provided subnets",
+      "Type": "AWS::EC2::VPC::Id"
+    },
+    "KeyName": {
+      "Description": "Existing EC2 KeyPair to be associated with EC2 instances for SSH",
+      "Type": "AWS::EC2::KeyPair::KeyName"
+    },
+    "MachineImage": {
+      "Description": "Amazon Machine Image to utilize for deployment",
+      "Type": "AWS::EC2::Image::Id",
+      "Default": "ami-0c2b8ca1dad447f8a"
+    },
+    "SubnetID": {
+      "Description": "List of VPC subnet IDs for the cluster",
+      "Type": "String",
+      "Default": "subnet-02261bcc054563e7d"
+    },
+    "LBSubnetA": {
+      "Description": "List of VPC subnet IDs for the cluster",
+      "Type": "String",
+      "Default": "subnet-02261bcc054563e7d"
+    },
+    "LBSubnetB": {
+      "Description": "List of VPC subnet IDs for the cluster",
+      "Type": "String",
+      "Default": "subnet-0e83b487f87bab411"
+    },
+    "Stack": {
+      "Description": "Stack name. Applied as tag to resources",
+      "Type": "String",
+      "Default": "ACME-Stack"
+    },
+    "App": {
+      "Description": "Comma separated list of applications composing this Stack. Applied as tag to resources",
+      "Type": "String",
+      "Default": "ACME-Application"
+    },
+    "Name": {
+      "Description": "Name to default resources to. Applied as tag to resources",
+      "Type": "String",
+      "Default": "EC2 ACME Test"
+    },
+    "Stage": {
+      "Description": "Stage/lifecycle of the application. Applied as a tag to resources",
+      "Type": "String",
+      "Default": "dev",
+      "AllowedValues": [
+        "prod",
+        "stage",
+        "qa",
+        "qai",
+        "dev",
+        "infra"
+      ]
+    },
+    "Project": {
+      "Default": "OPS",
+      "Description": "What is the project name for this resource",
+      "Type": "String"
+    },
+    "Owner": {
+      "Description": "Identify the owner of this instance",
+      "Type": "String",
+      "Default": "ACME"
+    },
+    "CacheNodeType": {
+      "Description": "The compute and memory capacity of the nodes in the Cache Cluster",
+      "Type": "String",
+      "Default": "cache.t2.small",
+      "ConstraintDescription": "must select a valid Cache Node type."
+    },
+    "NumberOfCacheNodes": {
+      "Default": "1",
+      "Description": "The number of Cache Nodes the Cache Cluster should have",
+      "Type": "Number",
+      "MinValue": "1",
+      "MaxValue": "10"
+    }
+  },
+  "Resources": {
+    "S3Bucket": {
+      "Type": "AWS::S3::Bucket",
+      "Properties": {
+        "BucketName": {
+          "Fn::Sub": "acme-caveonix-${AWS::Region}-${AWS::AccountId}"
+        },
+        "Tags": [
+          {
+            "Key": "Stage",
+            "Value": {
+              "Ref": "Stage"
+            }
+          },
+          {
+            "Key": "Owner",
+            "Value": {
+              "Ref": "Owner"
+            }
+          },
+          {
+            "Key": "Stack",
+            "Value": {
+              "Ref": "Stack"
+            }
+          },
+          {
+            "Key": "App",
+            "Value": {
+              "Ref": "App"
+            }
+          },
+          {
+            "Key": "Project",
+            "Value": {
+              "Ref": "Project"
+            }
+          },
+          {
+            "Key": "Name",
+            "Value": {
+              "Ref": "Name"
+            }
+          }
+        ],
+        "PublicAccessBlockConfiguration": {
+          "BlockPublicAcls": false,
+          "BlockPublicPolicy": false,
+          "IgnorePublicAcls": false,
+          "RestrictPublicBuckets": false
+        }
+      }
+    },
+    "EC2SecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupName": {
+          "Fn::Sub": "acme-caveonix-${AWS::Region}-${AWS::AccountId}"
+        },
+        "GroupDescription": "Security group for EC2 Instance",
+        "VpcId": {
+          "Ref": "VpcId"
+        },
+        "SecurityGroupIngress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 3389,
+            "ToPort": 3389,
+            "CidrIp": "10.0.0.0/8"
+          },
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 22,
+            "ToPort": 22,
+            "CidrIp": "10.0.0.0/8"
+          },
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 443,
+            "ToPort": 443,
+            "CidrIp": "10.0.0.0/8"
+          }
+        ],
+        "SecurityGroupEgress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 3389,
+            "ToPort": 3389,
+            "CidrIp": "0.0.0.0/0"
+          },
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 443,
+            "ToPort": 443,
+            "CidrIp": "0.0.0.0/0"
+          }
+        ]
+      }
+    },
+    "ECInstance": {
+      "Type": "AWS::EC2::Instance",
+      "Properties": {
+        "AvailabilityZone": "us-east-1a",
+        "ImageId": {
+          "Ref": "MachineImage"
+        },
+        "KeyName": {
+          "Ref": "KeyName"
+        },
+        "InstanceType": "m1.small",
+        "SubnetId": {
+          "Ref": "SubnetID"
+        },
+        "SecurityGroupIds": [
+          {
+            "Ref": "EC2SecurityGroup"
+          }
+        ],
+        "Tags": [
+          {
+            "Key": "Stage",
+            "Value": {
+              "Ref": "Stage"
+            }
+          },
+          {
+            "Key": "Owner",
+            "Value": {
+              "Ref": "Owner"
+            }
+          },
+          {
+            "Key": "Stack",
+            "Value": {
+              "Ref": "Stack"
+            }
+          },
+          {
+            "Key": "App",
+            "Value": {
+              "Ref": "App"
+            }
+          },
+          {
+            "Key": "Project",
+            "Value": {
+              "Ref": "Project"
+            }
+          },
+          {
+            "Key": "Name",
+            "Value": {
+              "Ref": "Name"
+            }
+          }
+        ]
+      }
+    },
+    "RDSDB": {
+      "Type": "AWS::RDS::DBInstance",
+      "Properties": {
+        "DBSecurityGroups": [
+          {
+            "Ref": "DbSecurityByEC2SecurityGroup"
+          },
+          {
+            "Ref": "DbSecurityByCIDRIPGroup"
+          }
+        ],
+        "AllocatedStorage": "5",
+        "DBInstanceClass": "db.t2.small",
+        "Engine": "MySQL",
+        "MasterUsername": "MyName",
+        "MasterUserPassword": "MyPassword",
+        "Tags": [
+          {
+            "Key": "Stage",
+            "Value": {
+              "Ref": "Stage"
+            }
+          },
+          {
+            "Key": "Owner",
+            "Value": {
+              "Ref": "Owner"
+            }
+          },
+          {
+            "Key": "Stack",
+            "Value": {
+              "Ref": "Stack"
+            }
+          },
+          {
+            "Key": "App",
+            "Value": {
+              "Ref": "App"
+            }
+          },
+          {
+            "Key": "Project",
+            "Value": {
+              "Ref": "Project"
+            }
+          },
+          {
+            "Key": "Name",
+            "Value": {
+              "Ref": "Name"
+            }
+          }
+        ]
+      },
+      "DeletionPolicy": "Snapshot",
+      "DependsOn": "DbSecurityByEC2SecurityGroup"
+    },
+    "DbSecurityByCIDRIPGroup": {
+      "Type": "AWS::RDS::DBSecurityGroup",
+      "Properties": {
+        "GroupDescription": "Ingress for CIDR IP",
+        "DBSecurityGroupIngress": {
+          "CIDRIP": "10.0.0.0/8"
+        },
+        "Tags": [
+          {
+            "Key": "Stage",
+            "Value": {
+              "Ref": "Stage"
+            }
+          },
+          {
+            "Key": "Owner",
+            "Value": {
+              "Ref": "Owner"
+            }
+          },
+          {
+            "Key": "Stack",
+            "Value": {
+              "Ref": "Stack"
+            }
+          },
+          {
+            "Key": "App",
+            "Value": {
+              "Ref": "App"
+            }
+          },
+          {
+            "Key": "Project",
+            "Value": {
+              "Ref": "Project"
+            }
+          },
+          {
+            "Key": "Name",
+            "Value": {
+              "Ref": "Name"
+            }
+          }
+        ]
+      }
+    },
+    "DbSecurityByEC2SecurityGroup": {
+      "Type": "AWS::RDS::DBSecurityGroup",
+      "Properties": {
+        "GroupDescription": "Ingress for CIDR IP",
+        "DBSecurityGroupIngress": {
+          "CIDRIP": "10.0.0.0/8"
+        },
+        "Tags": [
+          {
+            "Key": "Stage",
+            "Value": {
+              "Ref": "Stage"
+            }
+          },
+          {
+            "Key": "Owner",
+            "Value": {
+              "Ref": "Owner"
+            }
+          },
+          {
+            "Key": "Stack",
+            "Value": {
+              "Ref": "Stack"
+            }
+          },
+          {
+            "Key": "App",
+            "Value": {
+              "Ref": "App"
+            }
+          },
+          {
+            "Key": "Project",
+            "Value": {
+              "Ref": "Project"
+            }
+          },
+          {
+            "Key": "Name",
+            "Value": {
+              "Ref": "Name"
+            }
+          }
+        ]
+      }
+    },
+    "ALBLoadBalancer": {
+      "Type": "AWS::ElasticLoadBalancingV2::LoadBalancer",
+      "Properties": {
+        "IpAddressType": "ipv4",
+        "Name": {
+          "Fn::Sub": "acme-caveonix-${AWS::Region}"
+        },
+        "Scheme": "internal",
+        "SecurityGroups": [
+          {
+            "Ref": "EC2SecurityGroup"
+          }
+        ],
+        "Subnets": [
+          {
+            "Ref": "LBSubnetA"
+          },
+          {
+            "Ref": "LBSubnetB"
+          }
+        ],
+        "Tags": [
+          {
+            "Key": "Stage",
+            "Value": {
+              "Ref": "Stage"
+            }
+          },
+          {
+            "Key": "Owner",
+            "Value": {
+              "Ref": "Owner"
+            }
+          },
+          {
+            "Key": "Stack",
+            "Value": {
+              "Ref": "Stack"
+            }
+          },
+          {
+            "Key": "App",
+            "Value": {
+              "Ref": "App"
+            }
+          },
+          {
+            "Key": "Project",
+            "Value": {
+              "Ref": "Project"
+            }
+          },
+          {
+            "Key": "Name",
+            "Value": {
+              "Ref": "Name"
+            }
+          }
+        ],
+        "Type": "application"
+      }
+    },
+    "SNSTopic": {
+      "Type": "AWS::SNS::Topic",
+      "Properties": {
+        "TopicName": {
+          "Fn::Sub": "acme-caveonix-${AWS::Region}-${AWS::AccountId}"
+        },
+        "Subscription": [
+          {
+            "Endpoint": "nick.evans@caveonix.com",
+            "Protocol": "email"
+          }
+        ],
+        "Tags": [
+          {
+            "Key": "Stage",
+            "Value": {
+              "Ref": "Stage"
+            }
+          },
+          {
+            "Key": "Owner",
+            "Value": {
+              "Ref": "Owner"
+            }
+          },
+          {
+            "Key": "Stack",
+            "Value": {
+              "Ref": "Stack"
+            }
+          },
+          {
+            "Key": "App",
+            "Value": {
+              "Ref": "App"
+            }
+          },
+          {
+            "Key": "Project",
+            "Value": {
+              "Ref": "Project"
+            }
+          },
+          {
+            "Key": "Name",
+            "Value": {
+              "Ref": "Name"
+            }
+          }
+        ]
+      }
+    },
+    "SQSQueue": {
+      "Type": "AWS::SQS::Queue",
+      "Properties": {
+        "VisibilityTimeout": "250",
+        "Tags": [
+          {
+            "Key": "Stage",
+            "Value": {
+              "Ref": "Stage"
+            }
+          },
+          {
+            "Key": "Owner",
+            "Value": {
+              "Ref": "Owner"
+            }
+          },
+          {
+            "Key": "Stack",
+            "Value": {
+              "Ref": "Stack"
+            }
+          },
+          {
+            "Key": "App",
+            "Value": {
+              "Ref": "App"
+            }
+          },
+          {
+            "Key": "Project",
+            "Value": {
+              "Ref": "Project"
+            }
+          },
+          {
+            "Key": "Name",
+            "Value": {
+              "Ref": "Name"
+            }
+          }
+        ],
+        "QueueName": {
+          "Fn::Sub": "acme-caveonix-${AWS::Region}-${AWS::AccountId}"
+        }
+      }
+    },
+    "IAMUser": {
+      "Type": "AWS::IAM::User",
+      "Properties": {
+        "UserName": {
+          "Fn::Sub": "acme-user-${AWS::AccountId}"
+        },
+        "LoginProfile": {
+          "Password": {
+            "Ref": "Password"
+          }
+        },
+        "Tags": [
+          {
+            "Key": "Stage",
+            "Value": {
+              "Ref": "Stage"
+            }
+          },
+          {
+            "Key": "Owner",
+            "Value": {
+              "Ref": "Owner"
+            }
+          },
+          {
+            "Key": "Stack",
+            "Value": {
+              "Ref": "Stack"
+            }
+          },
+          {
+            "Key": "App",
+            "Value": {
+              "Ref": "App"
+            }
+          },
+          {
+            "Key": "Project",
+            "Value": {
+              "Ref": "Project"
+            }
+          },
+          {
+            "Key": "Name",
+            "Value": {
+              "Ref": "Name"
+            }
+          }
+        ]
+      }
+    },
+    "IAMUserPolicies": {
+      "Type": "AWS::IAM::Policy",
+      "Properties": {
+        "PolicyName": "ACMEUsers",
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": [
+                "cloudformation:Describe*",
+                "cloudformation:List*",
+                "cloudformation:Get*"
+              ],
+              "Resource": "*"
+            }
+          ]
+        },
+        "Users": [
+          {
+            "Ref": "IAMUser"
+          }
+        ]
+      }
+    },
+    "AccessKeys": {
+      "Type": "AWS::IAM::AccessKey",
+      "Properties": {
+        "UserName": {
+          "Ref": "IAMUser"
+        }
+      }
+    },
+    "CacheCluster": {
+      "Type": "AWS::ElastiCache::CacheCluster",
+      "Properties": {
+        "ClusterName": {
+          "Fn::Sub": "acme-caveonix-${AWS::Region}-${AWS::AccountId}"
+        },
+        "CacheNodeType": {
+          "Ref": "CacheNodeType"
+        },
+        "Engine": "memcached",
+        "NumCacheNodes": {
+          "Ref": "NumberOfCacheNodes"
+        },
+        "CacheSubnetGroupName": {"Ref": "ElasticCache"},
+        "VpcSecurityGroupIds": [
+          {
+            "Ref": "EC2SecurityGroup"
+          }
+        ],
+        "Tags": [
+          {
+            "Key": "Stage",
+            "Value": {
+              "Ref": "Stage"
+            }
+          },
+          {
+            "Key": "Owner",
+            "Value": {
+              "Ref": "Owner"
+            }
+          },
+          {
+            "Key": "Stack",
+            "Value": {
+              "Ref": "Stack"
+            }
+          },
+          {
+            "Key": "App",
+            "Value": {
+              "Ref": "App"
+            }
+          },
+          {
+            "Key": "Project",
+            "Value": {
+              "Ref": "Project"
+            }
+          },
+          {
+            "Key": "Name",
+            "Value": {
+              "Ref": "Name"
+            }
+          }
+        ]
+      }
+    },
+    "ElasticCache": {
+      "Type": "AWS::ElastiCache::SubnetGroup",
+      "Properties": {
+        "CacheSubnetGroupName": {
+          "Fn::Sub": "acme-caveonix-${AWS::Region}-${AWS::AccountId}"
+        },
+        "Description": "Elastic Cache Subnet Group",
+        "SubnetIds": [
+          {
+            "Ref": "SubnetID"
+          }
+        ],
+        "Tags": [
+          {
+            "Key": "Stage",
+            "Value": {
+              "Ref": "Stage"
+            }
+          },
+          {
+            "Key": "Owner",
+            "Value": {
+              "Ref": "Owner"
+            }
+          },
+          {
+            "Key": "Stack",
+            "Value": {
+              "Ref": "Stack"
+            }
+          },
+          {
+            "Key": "App",
+            "Value": {
+              "Ref": "App"
+            }
+          },
+          {
+            "Key": "Project",
+            "Value": {
+              "Ref": "Project"
+            }
+          },
+          {
+            "Key": "Name",
+            "Value": {
+              "Ref": "Name"
+            }
+          }
+        ]
+      }
+    },
+    "KmsKey": {
+      "Type": "AWS::KMS::Key",
+      "Properties": {
+        "Description": "ACME KMS Key",
+        "Enabled": "true",
+        "EnableKeyRotation": "false",
+        "KeyPolicy": {
+          "Version": "2012-10-17",
+          "Id": "key-consolepolicy-3",
+          "Statement": [
+            {
+              "Sid": "Enable IAM User Permissions",
+              "Effect": "Allow",
+              "Principal": {
+                "AWS": [
+                  "arn:aws:iam::971098929787:root"
+                ]
+              },
+              "Action": "kms:*",
+              "Resource": "*"
+            },
+            {
+              "Sid": "Allow access for Key Administrators",
+              "Effect": "Allow",
+              "Principal": {
+                "AWS": [
+                  {
+                    "Fn::Sub": "arn:aws:iam::${AWS::AccountId}:root"
+                  }
+                ]
+              },
+              "Action": [
+                "kms:Create*",
+                "kms:Describe*",
+                "kms:Enable*",
+                "kms:List*",
+                "kms:Put*",
+                "kms:Update*",
+                "kms:Revoke*",
+                "kms:Disable*",
+                "kms:Get*",
+                "kms:Delete*",
+                "kms:TagResource",
+                "kms:UntagResource",
+                "kms:ScheduleKeyDeletion",
+                "kms:CancelKeyDeletion"
+              ],
+              "Resource": "*"
+            },
+            {
+              "Sid": "Allow use of the key",
+              "Effect": "Allow",
+              "Principal": {
+                "AWS": [
+                  {
+                    "Fn::Sub": "arn:aws:iam::${AWS::AccountId}:root"
+                  }
+                ]
+              },
+              "Action": [
+                "kms:Encrypt",
+                "kms:Decrypt",
+                "kms:ReEncrypt*",
+                "kms:GenerateDataKey*",
+                "kms:DescribeKey"
+              ],
+              "Resource": "*"
+            },
+            {
+              "Sid": "Allow attachment of persistent resources",
+              "Effect": "Allow",
+              "Principal": {
+                "AWS": [
+                  {
+                    "Fn::Sub": "arn:aws:iam::${AWS::AccountId}:root"
+                  }
+                ]
+              },
+              "Action": [
+                "kms:CreateGrant",
+                "kms:ListGrants",
+                "kms:RevokeGrant"
+              ],
+              "Resource": "*",
+              "Condition": {
+                "Bool": {
+                  "kms:GrantIsForAWSResource": "true"
+                }
+              }
+            }
+          ]
+        },
+        "KeySpec": "SYMMETRIC_DEFAULT",
+        "KeyUsage": "ENCRYPT_DECRYPT",
+        "MultiRegion": "false",
+        "PendingWindowInDays": "7",
+        "Tags": [
+          {
+            "Key": "Stage",
+            "Value": {
+              "Ref": "Stage"
+            }
+          },
+          {
+            "Key": "Owner",
+            "Value": {
+              "Ref": "Owner"
+            }
+          },
+          {
+            "Key": "Stack",
+            "Value": {
+              "Ref": "Stack"
+            }
+          },
+          {
+            "Key": "App",
+            "Value": {
+              "Ref": "App"
+            }
+          },
+          {
+            "Key": "Project",
+            "Value": {
+              "Ref": "Project"
+            }
+          },
+          {
+            "Key": "Name",
+            "Value": {
+              "Ref": "Name"
+            }
+          }
+        ]
+      }
+    },
+    "KeyAlias": {
+      "Type": "AWS::KMS::Alias",
+      "Properties": {
+        "AliasName": "alias/acme-kms-key",
+        "TargetKeyId": {
+          "Ref": "KmsKey"
+        }
+      }
+    },
+    "CloudFormationEMRClusterWBootstrap": {
+      "Type": "AWS::EMR::Cluster",
+      "Properties": {
+        "CustomAmiId": {
+          "Ref": "MachineImage"
+        },
+        "Applications": [
+          {
+            "Name": "Hadoop"
+          },
+          {
+            "Name": "Pig"
+          },
+          {
+            "Name": "Spark"
+          }
+        ],
+        "EbsRootVolumeSize": "20",
+        "Instances": {
+          "CoreInstanceGroup": {
+            "InstanceCount": 3,
+            "InstanceType": "m3.xlarge",
+            "Market": "ON_DEMAND",
+            "Name": "CORE"
+          },
+          "Ec2KeyName": {
+            "Ref": "KeyName"
+          },
+          "Ec2SubnetId": {
+            "Ref": "SubnetID"
+          },
+          "MasterInstanceGroup": {
+            "InstanceCount": "1",
+            "InstanceType": "m3.xlarge",
+            "Market": "ON_DEMAND",
+            "Name": "MASTER"
+          },
+          "TerminationProtected": "false"
+        },
+        "JobFlowRole":"EMR_EC2_DefaultRole",
+        "Name": {
+          "Fn::Sub": "acme-caveonix-${AWS::Region}-${AWS::AccountId}"
+        },
+        "ReleaseLabel":"emr-5.33.0",
+        "ServiceRole": "EMR_DefaultRole",
+        "AutoScalingRole": "EMR_AutoScaling_DefaultRole",
+        "Tags": [
+          {
+            "Key": "Stage",
+            "Value": {
+              "Ref": "Stage"
+            }
+          },
+          {
+            "Key": "Owner",
+            "Value": {
+              "Ref": "Owner"
+            }
+          },
+          {
+            "Key": "Stack",
+            "Value": {
+              "Ref": "Stack"
+            }
+          },
+          {
+            "Key": "App",
+            "Value": {
+              "Ref": "App"
+            }
+          },
+          {
+            "Key": "Project",
+            "Value": {
+              "Ref": "Project"
+            }
+          },
+          {
+            "Key": "Name",
+            "Value": {
+              "Ref": "Name"
+            }
+          }
+        ],
+        "VisibleToAllUsers": "true"
+      }
+    },
+    "TaskBootStrap": {
+      "Type": "AWS::EMR::InstanceGroupConfig",
+      "Properties": {
+        "InstanceCount": "1",
+        "InstanceType": "m3.xlarge",
+        "Market": "ON_DEMAND",
+        "InstanceRole": "TASK",
+        "Name": "TASKNODES",
+        "EbsConfiguration": {
+          "EbsBlockDeviceConfigs": [
+            {
+              "VolumeSpecification": {
+                "SizeInGB":"20",
+                "VolumeType": "gp2"
+              },
+              "VolumesPerInstance": "1"
+            }
+          ],
+          "EbsOptimized": true
+        },
+        "JobFlowId": {
+          "Ref": "CloudFormationEMRClusterWBootstrap"
+        }
+      }
+    }
+  },
+  "Outputs": {
+    "S3BucketName": {
+      "Value": {
+        "Ref": "S3Bucket"
+      },
+      "Description": "Name of S3 bucket"
+    },
+    "AccessKey": {
+      "Value": {
+        "Ref": "AccessKeys"
+      },
+      "Description": "AWSAccessKeyId of new user"
+    },
+    "SecretKey": {
+      "Value": {
+        "Fn::GetAtt": [
+          "AccessKeys",
+          "SecretAccessKey"
+        ]
+      },
+      "Description": "AWSSecretKey of new user"
+    }
+  }
+}
